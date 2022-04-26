@@ -266,11 +266,15 @@ static uint64_t	rmmd_smc_forward(uint32_t src_sec_state,
 	 * used in return path.
 	 */
 	if (src_sec_state == NON_SECURE) {
+		CCA_TFA_FORWARD_SMC_NS_REALM();
 		SMC_RET8(ctx, x0, x1, x2, x3, x4,
 			 SMC_GET_GP(handle, CTX_GPREG_X5),
 			 SMC_GET_GP(handle, CTX_GPREG_X6),
 			 SMC_GET_GP(handle, CTX_GPREG_X7));
+	}else if (src_sec_state == REALM){
+		CCA_TFA_FORWARD_SMC_REALM_NS();
 	}
+
 
 	SMC_RET5(ctx, x0, x1, x2, x3, x4);
 }
@@ -407,6 +411,7 @@ uint64_t rmmd_rmm_el3_handler(uint32_t smc_fid, uint64_t x1, uint64_t x2,
 				uint64_t x3, uint64_t x4, void *cookie,
 				void *handle, uint64_t flags)
 {
+	 CCA_TFA_SMC_RMM();
 	uint32_t src_sec_state;
 	int ret;
 

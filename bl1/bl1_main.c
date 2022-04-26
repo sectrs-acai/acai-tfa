@@ -197,7 +197,8 @@ static void bl1_load_bl2(void)
 		ERROR("Failure in post image load handling of BL2 (%d)\n", err);
 		plat_error_handler(err);
 	}
-
+	
+	CCA_TFA_BL1_LOAD_BL2();
 	NOTICE("BL1: Booting BL2\n");
 }
 

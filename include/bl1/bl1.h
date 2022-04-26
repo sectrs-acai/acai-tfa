@@ -8,6 +8,7 @@
 #define BL1_H
 
 #include <common/bl_common.h>
+#include <benchmark/benchmark.h>
 
 /*
  * Defines for BL1 SMC function ids.

@@ -182,6 +182,7 @@ void bl31_main(void)
 	 */
 #if ENABLE_RME
 	if (rmm_init != NULL) {
+		CCA_TFA_BL31_RMM_INIT();
 		INFO("BL31: Initializing RMM\n");
 
 		int32_t rc = (*rmm_init)();
