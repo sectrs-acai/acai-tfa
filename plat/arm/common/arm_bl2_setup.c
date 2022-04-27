@@ -30,6 +30,7 @@
 #endif /* ENABLE_RME */
 #include <plat/arm/common/plat_arm.h>
 #include <plat/common/platform.h>
+#include <benchmark/benchmark.h>
 
 /* Data structure which holds the extents of the trusted SRAM for BL2 */
 static meminfo_t bl2_tzram_layout __aligned(CACHE_WRITEBACK_GRANULE);
@@ -147,13 +148,15 @@ static void arm_bl2_plat_gpt_setup(void)
 	};
 
 	/* Initialize entire protected space to GPT_GPI_ANY. */
+	CCA_TFA_GPT_L0_INIT_START();
 	if (gpt_init_l0_tables(GPCCR_PPS_4GB, ARM_L0_GPT_ADDR_BASE,
 		ARM_L0_GPT_SIZE) < 0) {
 		ERROR("gpt_init_l0_tables() failed!\n");
 		panic();
 	}
-
+	CCA_TFA_GPT_L0_INIT_STOP();
 	/* Carve out defined PAS ranges. */
+	CCA_TFA_GPT_L1_INIT_START();
 	if (gpt_init_pas_l1_tables(GPCCR_PGS_4K,
 				   ARM_L1_GPT_ADDR_BASE,
 				   ARM_L1_GPT_SIZE,
@@ -163,6 +166,7 @@ static void arm_bl2_plat_gpt_setup(void)
 		ERROR("gpt_init_pas_l1_tables() failed!\n");
 		panic();
 	}
+	CCA_TFA_GPT_L1_INIT_STOP();
 
 	INFO("Enabling Granule Protection Checks\n");
 	if (gpt_enable() < 0) {
