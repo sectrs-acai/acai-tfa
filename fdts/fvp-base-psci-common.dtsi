@@ -28,7 +28,8 @@
 	#size-cells = <2>;
 
 #if (ENABLE_RME == 1)
-	chosen { bootargs = "mem=1G console=ttyAMA0 earlycon=pl011,0x1c090000 root=/dev/vda ip=on";};
+    chosen { bootargs = "mem=1900M isolcpus=3 console=ttyAMA0 earlycon=pl011,0x1c090000 root=/dev/vda ip=on cpuidle.off=1 ip=off fvp_escape_on cma=256MB";};
+
 #else
 	chosen {};
 #endif
@@ -168,6 +169,12 @@
 			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
 		clock-frequency = <100000000>;
 	};
+
+	virtio_p9@140000 {
+       compatible = "virtio,mmio";
+       reg = <0x0 0x1c140000 0x0 0x1000>;
+       interrupts = <0x0 0x2b 0x4>;
+  };
 
 	timer@2a810000 {
 			compatible = "arm,armv7-timer-mem";
