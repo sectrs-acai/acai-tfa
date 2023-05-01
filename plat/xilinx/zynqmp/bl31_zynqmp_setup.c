@@ -211,15 +211,43 @@ static void prepare_dtb(void)
 }
 #endif
 
+static void enable_cycle_counter_el0(void)
+{
+	uint64_t val;
+	/* Disable cycle counter overflow interrupt */
+	asm volatile("msr pmintenclr_el1, %0" : : "r" ((1UL << 31)));
+	/* Enable cycle counter */
+	asm volatile("msr pmcntenset_el0, %0" :: "r" BIT(31));
+	/* Enable user-mode access to cycle counters. */
+	asm volatile("msr pmuserenr_el0, %0" : : "r"(BIT(0) | BIT(2)));
+	/* Clear cycle counter and start */
+	asm volatile("mrs %0, pmcr_el0" : "=r" (val));
+	val |= (BIT(0) | BIT(2));
+	isb();
+	asm volatile("msr pmcr_el0, %0" : : "r" (val));
+	val = BIT(27);
+	asm volatile("msr pmccfiltr_el0, %0" : : "r" (val));
+}
+
 void bl31_platform_setup(void)
 {
+	uint64_t prev,curr;
 #if (BL31_LIMIT < PLAT_DDR_LOWMEM_MAX)
 		prepare_dtb();
 #endif
+	ERROR("------- hello from bl31_platform_setup -------\n");
+
+	asm volatile("isb;mrs %0, pmccntr_el0" : "=r"(prev));
+	ERROR("pmccntr_el0: %lx\n",prev);
+	enable_cycle_counter_el0();
+	asm volatile("isb;mrs %0, pmccntr_el0" : "=r"(prev));
+	ERROR("pmccntr_el0: %lx\n",prev);
 
 	/* Initialize the gic cpu and distributor interfaces */
 	plat_arm_gic_driver_init();
 	plat_arm_gic_init();
+	asm volatile("isb;mrs %0, pmccntr_el0" : "=r"(curr));
+	ERROR("pmccntr_el0: %lx\n",curr- prev);
 }
 
 void bl31_plat_runtime_setup(void)
