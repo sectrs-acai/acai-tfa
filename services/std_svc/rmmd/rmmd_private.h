@@ -41,6 +41,29 @@ typedef struct rmmd_rmm_context {
 	cpu_context_t cpu_ctx;
 } rmmd_rmm_context_t;
 
+#define STRTAB_STE_DWORDS		8
+
+struct stream_table_config {
+	bool initialized;
+	uint64_t *base_addr;
+	uint64_t size;
+};
+
+struct s2_table_mem_area {
+	void *base_addr;
+	void *current_ptr;
+	uint64_t size;
+};
+
+struct cmd_queue_struct {
+	uint64_t *base_addr;
+	uint32_t *producer_ptr;
+	uint32_t producer_value;
+	uint32_t *consumer_ptr;
+	uint64_t size;
+	spinlock_t lock;
+};
+
 /* Functions used to enter/exit the RMM synchronously */
 uint64_t rmmd_rmm_sync_entry(rmmd_rmm_context_t *ctx);
 __dead2 void rmmd_rmm_sync_exit(uint64_t rc);

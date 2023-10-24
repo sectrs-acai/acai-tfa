@@ -585,6 +585,7 @@ static uintptr_t xlat_tables_map_region(xlat_ctx_t *ctx, mmap_region_t *mm,
 
 	unsigned int table_idx;
 
+	WARN("map from %lx to %lx | currentl lvl: %d\n",mm->base_va,mm_end_va,level);
 	table_idx_va = xlat_tables_find_start_va(mm, table_base_va, level);
 	table_idx = xlat_tables_va_to_index(table_base_va, table_idx_va, level);
 
@@ -614,6 +615,7 @@ static uintptr_t xlat_tables_map_region(xlat_ctx_t *ctx, mmap_region_t *mm,
 
 			subtable = xlat_table_get_empty(ctx);
 			if (subtable == NULL) {
+				WARN("not enough free tables 0x%x\n",ctx->tables_num);
 				/* Not enough free tables to map this region */
 				return table_idx_va;
 			}
@@ -686,6 +688,8 @@ static int mmap_add_region_check(const xlat_ctx_t *ctx, const mmap_region_t *mm)
 	unsigned long long end_pa = base_pa + size - 1U;
 	uintptr_t end_va = base_va + size - 1U;
 
+	WARN("mmap_add_region_check for %lx\n",mm->base_va);
+
 	if (!IS_PAGE_ALIGNED(base_pa) || !IS_PAGE_ALIGNED(base_va) ||
 			!IS_PAGE_ALIGNED(size))
 		return -EINVAL;
@@ -707,8 +711,10 @@ static int mmap_add_region_check(const xlat_ctx_t *ctx, const mmap_region_t *mm)
 		return -ERANGE;
 
 	/* Check that there is space in the ctx->mmap array */
-	if (ctx->mmap[ctx->mmap_num - 1].size != 0U)
+	if (ctx->mmap[ctx->mmap_num - 1].size != 0U){
+		WARN("enomem ???? %lx",ctx->mmap[ctx->mmap_num - 1].size);
 		return -ENOMEM;
+	}
 
 	/* Check for PAs and VAs overlaps with all other regions */
 	for (const mmap_region_t *mm_cursor = ctx->mmap;
@@ -767,6 +773,8 @@ static int mmap_add_region_check(const xlat_ctx_t *ctx, const mmap_region_t *mm)
 				return -EPERM;
 		}
 	}
+	
+	WARN("mmap_add_region_check SUCCESS for %lx\n",mm->base_va);
 
 	return 0;
 }
@@ -957,6 +965,9 @@ int mmap_add_dynamic_region_ctx(xlat_ctx_t *ctx, mmap_region_t *mm)
 	uintptr_t end_va = mm->base_va + mm->size - 1U;
 	int ret;
 
+	printf("------------------------------------------------------\n");
+	//xlat_tables_print(ctx);
+	//xlat_mmap_print(mm);
 	/* Nothing to do */
 	if (mm->size == 0U)
 		return 0;
@@ -965,8 +976,10 @@ int mmap_add_dynamic_region_ctx(xlat_ctx_t *ctx, mmap_region_t *mm)
 	mm->attr |= MT_DYNAMIC;
 
 	ret = mmap_add_region_check(ctx, mm);
-	if (ret != 0)
+	if (ret != 0){
+		WARN("mmap_add_dynamic_region || region_check\n");
 		return ret;
+	}
 
 	/*
 	 * Find the adequate entry in the mmap array in the same way done for
@@ -1017,8 +1030,10 @@ int mmap_add_dynamic_region_ctx(xlat_ctx_t *ctx, mmap_region_t *mm)
 			 * Check if the mapping function actually managed to map
 			 * anything. If not, just return now.
 			 */
-			if (mm->base_va >= end_va)
+			if (mm->base_va >= end_va){
+				WARN("end_va: %lx || mm->base_va %lx\n",end_va,mm->base_va);
 				return -ENOMEM;
+			}
 
 			/*
 			 * Something went wrong after mapping some table

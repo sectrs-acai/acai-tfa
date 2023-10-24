@@ -69,6 +69,7 @@ func bl1_entrypoint
 	 * --------------------------------------------------
 	 */
 #if ENABLE_RME
+	MOV XZR, #0x1020
 	b	bl1_run_bl2_in_root
 #else
 	b	el3_exit

@@ -119,6 +119,9 @@ void __init bl31_plat_arch_setup(void)
 		panic();
 	}
 
+	// zero out the table region
+	memset((void*)ARM_LINUX_GPT_TABLE_BASE,0,ARM_LINUX_GPT_TABLE_SIZE);
+
 	/* Populate HW_CONFIG device tree with the mapped address */
 	fconf_populate("HW_CONFIG", hw_config_info->config_addr);
 

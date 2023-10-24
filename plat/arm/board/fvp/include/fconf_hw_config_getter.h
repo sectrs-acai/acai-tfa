@@ -20,6 +20,11 @@ struct gicv3_config_t {
 	uint64_t gicr_base;
 };
 
+struct pcie_config_t {
+	uint64_t pci_config_base;
+	uint64_t pci_mem_base;
+};
+
 struct hw_topology_t {
 	uint32_t plat_cluster_count;
 	uint32_t cluster_cpu_count;
@@ -40,6 +45,7 @@ int fconf_populate_gicv3_config(uintptr_t config);
 int fconf_populate_topology(uintptr_t config);
 int fconf_populate_uart_config(uintptr_t config);
 int fconf_populate_cpu_timer(uintptr_t config);
+int fconf_populate_pci(uintptr_t config);
 
 extern struct gicv3_config_t gicv3_config;
 extern struct hw_topology_t soc_topology;

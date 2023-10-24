@@ -10,6 +10,7 @@
  * Copyright (c) 2017-2021, ARM Limited and Contributors. All rights reserved.
  */
 
+
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <services/sdei_flags.h>
 
@@ -27,8 +28,13 @@
 	#address-cells = <2>;
 	#size-cells = <2>;
 
+
+/*
+ * add: mem=2G to support realm spawn
+ * fvp_escape_off: to not escape during boot
+ */
 #if (ENABLE_RME == 1)
-	chosen { bootargs = "mem=1G console=ttyAMA0 earlycon=pl011,0x1c090000 root=/dev/vda ip=on";};
+	chosen { bootargs = "mem=1900M isolcpus=3 console=ttyAMA0 earlycon=pl011,0x1c090000 root=/dev/vda ip=on cpuidle.off=1 ip=off fvp_escape_on cma=256MB";};
 #else
 	chosen {};
 #endif
@@ -138,7 +144,7 @@
 	memory@80000000 {
 		device_type = "memory";
 #if (ENABLE_RME == 1)
-		reg = <0x00000000 0x80000000 0 0x7C000000>,
+		reg = <0x00000000 0x80000000 0 0x77000000>,
 		      <0x00000008 0x80000000 0 0x80000000>;
 #else
 		reg = <0x00000000 0x80000000 0 0x7F000000>,
@@ -168,6 +174,14 @@
 			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
 		clock-frequency = <100000000>;
 	};
+
+
+	virtio_p9@140000 {
+       compatible = "virtio,mmio";
+       reg = <0x0 0x1c140000 0x0 0x1000>;
+       interrupts = <0x0 0x2b 0x4>;
+  };
+
 
 	timer@2a810000 {
 			compatible = "arm,armv7-timer-mem";

@@ -292,8 +292,14 @@ int fconf_populate_cpu_timer(uintptr_t config)
 
 	return 0;
 }
+int fconf_populate_pci(uintptr_t config){
+	ERROR("PLATFORM config for pci");
+	return 0;
+}
+
 
 FCONF_REGISTER_POPULATOR(HW_CONFIG, gicv3_config, fconf_populate_gicv3_config);
 FCONF_REGISTER_POPULATOR(HW_CONFIG, topology, fconf_populate_topology);
 FCONF_REGISTER_POPULATOR(HW_CONFIG, uart_config, fconf_populate_uart_config);
 FCONF_REGISTER_POPULATOR(HW_CONFIG, cpu_timer, fconf_populate_cpu_timer);
+FCONF_REGISTER_POPULATOR(HW_CONFIG, pcie_config_t, fconf_populate_pci);

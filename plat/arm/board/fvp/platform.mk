@@ -227,6 +227,7 @@ BL31_SOURCES		+=	drivers/arm/fvp/fvp_pwrc.c			\
 				plat/arm/board/fvp/fvp_topology.c		\
 				plat/arm/board/fvp/aarch64/fvp_helpers.S	\
 				plat/arm/common/arm_nor_psci_mem_protect.c	\
+				plat/arm/board/fvp/fvp_pci_svc.c \
 				${FVP_CPU_LIBS}					\
 				${FVP_GIC_SOURCES}				\
 				${FVP_INTERCONNECT_SOURCES}			\
@@ -298,9 +299,9 @@ $(eval $(call TOOL_ADD_PAYLOAD,${FVP_SOC_FW_CONFIG},--soc-fw-config,${FVP_SOC_FW
 # Add the NT_FW_CONFIG to FIP and specify the same to certtool
 $(eval $(call TOOL_ADD_PAYLOAD,${FVP_NT_FW_CONFIG},--nt-fw-config,${FVP_NT_FW_CONFIG}))
 
+
 FDT_SOURCES		+=	${FVP_HW_CONFIG_DTS}
 $(eval FVP_HW_CONFIG	:=	${BUILD_PLAT}/$(patsubst %.dts,%.dtb,$(FVP_HW_CONFIG_DTS)))
-
 # Add the HW_CONFIG to FIP and specify the same to certtool
 $(eval $(call TOOL_ADD_PAYLOAD,${FVP_HW_CONFIG},--hw-config,${FVP_HW_CONFIG}))
 endif

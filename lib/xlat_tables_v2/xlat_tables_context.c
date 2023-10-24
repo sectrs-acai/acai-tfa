@@ -25,6 +25,7 @@ uint64_t mmu_cfg_params[MMU_CFG_PARAM_MAX];
  * Allocate and initialise the default translation context for the BL image
  * currently executing.
  */
+
 REGISTER_XLAT_CONTEXT(tf, MAX_MMAP_REGIONS, MAX_XLAT_TABLES,
 		      PLAT_VIRT_ADDR_SPACE_SIZE, PLAT_PHY_ADDR_SPACE_SIZE);
 
@@ -65,6 +66,7 @@ void mmap_add_alloc_va(mmap_region_t *mm)
 int mmap_add_dynamic_region(unsigned long long base_pa, uintptr_t base_va,
 			    size_t size, unsigned int attr)
 {
+	WARN("mmap_add_dynamic_region 'tables_num': %x | MAX_XLAT_TABLES: %x\n", tf_xlat_ctx.tables_num,MAX_XLAT_TABLES);
 	mmap_region_t mm = MAP_REGION(base_pa, base_va, size, attr);
 
 	return mmap_add_dynamic_region_ctx(&tf_xlat_ctx, &mm);

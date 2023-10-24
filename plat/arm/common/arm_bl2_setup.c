@@ -30,6 +30,8 @@
 #endif /* ENABLE_RME */
 #include <plat/arm/common/plat_arm.h>
 #include <plat/common/platform.h>
+#include <benchmark/benchmark.h>
+
 
 /* Data structure which holds the extents of the trusted SRAM for BL2 */
 static meminfo_t bl2_tzram_layout __aligned(CACHE_WRITEBACK_GRANULE);
@@ -130,7 +132,7 @@ void bl2_platform_setup(void)
 	arm_bl2_platform_setup();
 }
 
-#if ENABLE_RME
+ #if ENABLE_RME
 
 static void arm_bl2_plat_gpt_setup(void)
 {
@@ -142,27 +144,35 @@ static void arm_bl2_plat_gpt_setup(void)
 		ARM_PAS_KERNEL,
 		ARM_PAS_SECURE,
 		ARM_PAS_REALM,
+		// ARM_PAS_DEV, //Pertie
 		ARM_PAS_EL3_DRAM,
-		ARM_PAS_GPTS
+		ARM_PAS_GPTS,
+		ARM_PAS_GPTS2	//Pertie
 	};
 
 	/* Initialize entire protected space to GPT_GPI_ANY. */
+	CCA_TFA_GPT_L0_INIT_START();
 	if (gpt_init_l0_tables(GPCCR_PPS_4GB, ARM_L0_GPT_ADDR_BASE,
-		ARM_L0_GPT_SIZE) < 0) {
+		ARM_L0_GPT_SIZE, ARM_L0_GPT2_ADDR_BASE, ARM_L0_GPT2_SIZE) < 0) {
 		ERROR("gpt_init_l0_tables() failed!\n");
 		panic();
 	}
+	CCA_TFA_GPT_L0_INIT_STOP();
 
+	CCA_TFA_GPT_L1_INIT_START();
 	/* Carve out defined PAS ranges. */
 	if (gpt_init_pas_l1_tables(GPCCR_PGS_4K,
 				   ARM_L1_GPT_ADDR_BASE,
 				   ARM_L1_GPT_SIZE,
+				   ARM_L1_GPT2_ADDR_BASE,
+				   ARM_L1_GPT2_SIZE,
 				   pas_regions,
 				   (unsigned int)(sizeof(pas_regions) /
 				   sizeof(pas_region_t))) < 0) {
 		ERROR("gpt_init_pas_l1_tables() failed!\n");
 		panic();
 	}
+	CCA_TFA_GPT_L1_INIT_STOP();
 
 	INFO("Enabling Granule Protection Checks\n");
 	if (gpt_enable() < 0) {
@@ -171,7 +181,7 @@ static void arm_bl2_plat_gpt_setup(void)
 	}
 }
 
-#endif /* ENABLE_RME */
+ #endif /* ENABLE_RME */
 
 /*******************************************************************************
  * Perform the very early platform specific architectural setup here.
@@ -202,6 +212,7 @@ void arm_bl2_plat_arch_setup(void)
 		ARM_MAP_BL_CONFIG_REGION,
 #if ENABLE_RME
 		ARM_MAP_L0_GPT_REGION,
+		ARM_MAP_L0_GPT2_REGION, //Pertie 
 #endif
 		{0}
 	};

@@ -114,6 +114,7 @@ const mmap_region_t plat_arm_mmap[] = {
 #if ENABLE_RME
 	ARM_MAP_RMM_DRAM,
 	ARM_MAP_GPT_L1_DRAM,
+	ARM_MAP_GPT2_L1_DRAM, //Pertie
 #endif /* ENABLE_RME */
 #ifdef SPD_tspd
 	ARM_MAP_TSP_SEC_MEM,
@@ -172,7 +173,12 @@ const mmap_region_t plat_arm_mmap[] = {
 #endif
 #if ENABLE_RME
 	ARM_MAP_GPT_L1_DRAM,
+	ARM_MAP_GPT2_L1_DRAM, //Pertie
+	ARM_MAP_PCIE_CONFIG,
+	//SMMU_MEMORY_DRAM,
+	LINUX_MEMORY_DRAM, // Map Linux Memory
 	ARM_MAP_EL3_RMM_SHARED_MEM,
+	LINUX_GPT_TABLE_DRAM, // Map page ownership tracking memory
 #endif
 	{0}
 };

@@ -125,7 +125,7 @@ func bl31_entrypoint
 	add	x1, x1, :lo12:__BSS_END__
 	sub	x1, x1, x0
 	bl	clean_dcache_range
-
+	MOV XZR, #0x101F
 	b	el3_exit
 endfunc bl31_entrypoint
 

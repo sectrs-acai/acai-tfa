@@ -82,11 +82,14 @@
  *   - TF-A <-> RMM SHARED: Area shared for communication between TF-A and RMM
  *   - AP TZC DRAM: The remaining TZC secured DRAM reserved for AP use
  *
- *              RME enabled(64MB)                RME not enabled(16MB)
- *              --------------------             -------------------
+ *              RME enabled(128MB)                RME not enabled(16MB)     
+ *  			--------------------
+ * 				| Page Ownership   |
+ *              | Treacker  (8MB)  | 
+ * 				--------------------             -------------------
  *              |                  |             |                 |
  *              |  AP TZC (~28MB)  |             |  AP TZC (~14MB) |
- *              --------------------             -------------------
+ *              --------------------             -------------------   
  *              |                  |             |                 |
  *              |   REALM (RMM)    |             |  EL3 TZC (2MB)  |
  *              |   (32MB - 4KB)   |             -------------------
@@ -100,10 +103,14 @@
  *              --------------------
  *              | L1 GPT + SCP TZC |
  *              |       (~1MB)     |
+ *  			--------------------   <- this is the BASE addr for L1 GPT2 
+ * //Pertie?	| L1 GPT2 		   |
+ *              |       (~1MB)     |
  *  0xFFFF_FFFF --------------------
  */
 #if ENABLE_RME
-#define ARM_TZC_DRAM1_SIZE              UL(0x04000000) /* 64MB */
+// #define ARM_TZC_DRAM1_SIZE              UL(0x04000000) /* 64MB */
+#define ARM_TZC_DRAM1_SIZE              UL(0x08000000) /* 128MB */
 /*
  * Define a region within the TZC secured DRAM for use by EL3 runtime
  * firmware. This region is meant to be NOLOAD and will not be zero
@@ -112,6 +119,9 @@
  */
 #define ARM_EL3_TZC_DRAM1_SIZE		UL(0x00300000) /* 3MB */
 #define ARM_L1_GPT_SIZE			UL(0x00100000) /* 1MB */
+//Pertie
+#define ARM_L1_GPT2_SIZE			UL(0x00100000) /* 1MB */
+#define ARM_LINUX_GPT_TABLE_SIZE			UL(0x08000000) /* 64MB */
 
 /* 32MB - ARM_EL3_RMM_SHARED_SIZE */
 #define ARM_REALM_SIZE			(UL(0x02000000) -		\
@@ -125,16 +135,21 @@
 #define ARM_EL3_RMM_SHARED_SIZE		UL(0)
 #endif /* ENABLE_RME */
 
-#define ARM_SCP_TZC_DRAM1_BASE		(ARM_DRAM1_BASE +		\
-					ARM_DRAM1_SIZE -		\
+#define ARM_SCP_TZC_DRAM1_BASE		(ARM_L1_GPT_ADDR_BASE -		\
 					(ARM_SCP_TZC_DRAM1_SIZE +	\
-					ARM_L1_GPT_SIZE))
+					ARM_L1_GPT_SIZE)) 
 #define ARM_SCP_TZC_DRAM1_SIZE		PLAT_ARM_SCP_TZC_DRAM1_SIZE
 #define ARM_SCP_TZC_DRAM1_END		(ARM_SCP_TZC_DRAM1_BASE +	\
 					ARM_SCP_TZC_DRAM1_SIZE - 1U)
 #if ENABLE_RME
-#define ARM_L1_GPT_ADDR_BASE		(ARM_DRAM1_BASE +		\
+//Pertie
+#define ARM_L1_GPT2_ADDR_BASE		(ARM_DRAM1_BASE +		\
 					ARM_DRAM1_SIZE -		\
+					ARM_L1_GPT2_SIZE)
+#define ARM_L1_GPT2_END			(ARM_L1_GPT2_ADDR_BASE +		\
+					ARM_L1_GPT2_SIZE - 1U)
+
+#define ARM_L1_GPT_ADDR_BASE		(ARM_L1_GPT2_ADDR_BASE -		\
 					ARM_L1_GPT_SIZE)
 #define ARM_L1_GPT_END			(ARM_L1_GPT_ADDR_BASE +		\
 					ARM_L1_GPT_SIZE - 1U)
@@ -144,10 +159,9 @@
 
 #define ARM_REALM_END                   (ARM_REALM_BASE + ARM_REALM_SIZE - 1U)
 
-#define ARM_EL3_RMM_SHARED_BASE		(ARM_DRAM1_BASE +		\
-					 ARM_DRAM1_SIZE -		\
+#define ARM_EL3_RMM_SHARED_BASE		(ARM_L1_GPT_ADDR_BASE -		\
 					(ARM_SCP_TZC_DRAM1_SIZE +	\
-					ARM_L1_GPT_SIZE +		\
+					ARM_L1_GPT_SIZE +	\
 					ARM_EL3_RMM_SHARED_SIZE +	\
 					ARM_EL3_TZC_DRAM1_SIZE))
 
@@ -160,17 +174,24 @@
 #define ARM_EL3_TZC_DRAM1_END		(ARM_EL3_TZC_DRAM1_BASE +	\
 					ARM_EL3_TZC_DRAM1_SIZE - 1U)
 
-#define ARM_AP_TZC_DRAM1_BASE		(ARM_DRAM1_BASE +		\
-					ARM_DRAM1_SIZE -		\
+#define ARM_AP_TZC_DRAM1_BASE		(ARM_L1_GPT_ADDR_BASE -		\
 					ARM_TZC_DRAM1_SIZE)
 #define ARM_AP_TZC_DRAM1_SIZE		(ARM_TZC_DRAM1_SIZE -		\
 					(ARM_SCP_TZC_DRAM1_SIZE +	\
 					ARM_EL3_TZC_DRAM1_SIZE +	\
 					ARM_EL3_RMM_SHARED_SIZE +	\
 					ARM_REALM_SIZE +		\
-					ARM_L1_GPT_SIZE))
+					ARM_L1_GPT_SIZE + \
+					ARM_L1_GPT2_SIZE)) //Pertie
 #define ARM_AP_TZC_DRAM1_END		(ARM_AP_TZC_DRAM1_BASE +	\
 					ARM_AP_TZC_DRAM1_SIZE - 1U)
+
+// Page table array to track ownership.
+#define ARM_LINUX_GPT_TABLE_BASE		(ARM_AP_TZC_DRAM1_BASE -		\
+					ARM_LINUX_GPT_TABLE_SIZE)
+
+#define ARM_LINUX_GPT_TABLE_END			(ARM_LINUX_GPT_TABLE_BASE +		\
+					ARM_LINUX_GPT_TABLE_SIZE - 1U)
 
 /* Define the Access permissions for Secure peripherals to NS_DRAM */
 #if ARM_CRYPTOCELL_INTEG
@@ -233,6 +254,12 @@
 #define ARM_DRAM2_SIZE			PLAT_ARM_DRAM2_SIZE
 #define ARM_DRAM2_END			(ARM_DRAM2_BASE +		\
 					 ARM_DRAM2_SIZE - 1U)
+
+#define LINUX_MEM_START 0x80001000
+#define LINUX_MEM_SIZE  0x80000000
+
+#define SMMU_MEM_START 0x2b400000
+#define SMMU_MEM_SIZE  0x00020000
 
 #define ARM_IRQ_SEC_PHY_TIMER		29
 
@@ -325,12 +352,45 @@
 					ARM_L1_GPT_ADDR_BASE,		\
 					ARM_L1_GPT_SIZE,		\
 					MT_MEMORY | MT_RW | EL3_PAS)
+//Pertie
+#define ARM_MAP_GPT2_L1_DRAM MAP_REGION_FLAT(			\
+					ARM_L1_GPT2_ADDR_BASE,		\
+					ARM_L1_GPT2_SIZE,		\
+					MT_MEMORY | MT_RW | EL3_PAS)
+
+//Pertie
+#define ARM_MAP_PCIE_CONFIG MAP_REGION_FLAT(			\
+					PCIE_EXP_BASE,		\
+					PCIE_CONFIG_SIZE,		\
+					MT_DEVICE | MT_NS )
+
+// We map the Linux stuff as Realm.
+// So we prevent toctou issues.
+// Before we can do any checks the page must be mapped as REALM in the GPT.
+// Otherwise the s1 translation in EL3 fails.
+#define LINUX_MEMORY_DRAM MAP_REGION_FLAT(\
+					LINUX_MEM_START,\
+					LINUX_MEM_SIZE,\
+					MT_MEMORY | MT_RW | MT_REALM)
+
+#define SMMU_MEMORY_DRAM MAP_REGION_FLAT(\
+					SMMU_MEM_START,\
+					SMMU_MEM_SIZE,\
+					MT_DEVICE | MT_RW | MT_NS)
+
+// TODO: must be changed to EL3_PAS, however faults atm. 
+// * fails probably because its not set up correctly in the GPT
+// * and still in the ns address space. 
+#define LINUX_GPT_TABLE_DRAM MAP_REGION_FLAT(\
+					ARM_LINUX_GPT_TABLE_BASE,\
+					ARM_LINUX_GPT_TABLE_SIZE,\
+					MT_MEMORY | MT_RW | MT_NS) 
 
 #define ARM_MAP_EL3_RMM_SHARED_MEM					\
 				MAP_REGION_FLAT(			\
 					ARM_EL3_RMM_SHARED_BASE,	\
 					ARM_EL3_RMM_SHARED_SIZE,	\
-					MT_MEMORY | MT_RW | MT_REALM)
+					MT_MEMORY | MT_RW | MT_REALM )
 
 #endif /* ENABLE_RME */
 
@@ -403,6 +463,11 @@
 #if ENABLE_RME
 #define ARM_MAP_L0_GPT_REGION		MAP_REGION_FLAT(ARM_L0_GPT_ADDR_BASE,	\
 						ARM_L0_GPT_SIZE,		\
+						MT_MEMORY | MT_RW | MT_ROOT)
+
+//Pertie
+#define ARM_MAP_L0_GPT2_REGION		MAP_REGION_FLAT(ARM_L0_GPT2_ADDR_BASE,	\
+						ARM_L0_GPT2_SIZE,		\
 						MT_MEMORY | MT_RW | MT_ROOT)
 #endif
 
@@ -513,6 +578,12 @@
 #define ARM_L0_GPT_SIZE			(PAGE_SIZE)
 #define ARM_L0_GPT_ADDR_BASE		(ARM_FW_CONFIGS_LIMIT)
 #define ARM_L0_GPT_LIMIT		(ARM_L0_GPT_ADDR_BASE + ARM_L0_GPT_SIZE)
+
+//Pertie 
+#define ARM_L0_GPT2_SIZE			(PAGE_SIZE)
+#define ARM_L0_GPT2_ADDR_BASE		(ARM_L0_GPT_LIMIT)
+#define ARM_L0_GPT2_LIMIT		(ARM_L0_GPT2_ADDR_BASE + ARM_L0_GPT2_SIZE)
+
 #else
 #define ARM_L0_GPT_SIZE			U(0)
 #endif

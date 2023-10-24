@@ -39,6 +39,8 @@
  */
 					/* 0x18F */
 #define RMM_RMI_REQ_COMPLETE		SMC64_RMI_FID(U(0x3F))
+// must match the number in rmm
+#define LINUX_RMI_MAP_PAGE		SMC64_RMI_FID(U(0x3B))
 
 /* RMM_BOOT_COMPLETE arg0 error codes */
 #define E_RMM_BOOT_SUCCESS				(0)
@@ -82,6 +84,8 @@
 					/* 0x1B0 - 0x1B1 */
 #define RMM_GTSI_DELEGATE		SMC64_RMMD_EL3_FID(U(0))
 #define RMM_GTSI_UNDELEGATE		SMC64_RMMD_EL3_FID(U(1))
+#define RMM_GTSI_DELEGATE_DEV	SMC64_RMMD_EL3_FID(U(8))
+#define RMM_GTSI_ATTACH_DEV	SMC64_RMMD_EL3_FID(U(10))
 
 /* Return error codes from RMM-EL3 SMCs */
 #define E_RMM_OK			 0
@@ -127,6 +131,77 @@
  */
 					/* 0x1B3 */
 #define RMM_ATTEST_GET_PLAT_TOKEN	SMC64_RMMD_EL3_FID(U(3))
+
+
+// Our defines
+#define RESERVED_MEM_SIZE 0x80000000
+
+#define PHYS_GRANULE_IDX(x) (x-RESERVED_MEM_SIZE)/4096 // 4096 is page size, maybe use a macro in the future.
+#define GRANULE_UNINITIALIZED 0
+#define GRANULE_BELONGS_TO_REALM (1 << 0)
+#define GRANULE_BELONGS_TO_NS (1 << 1)
+#define GRANULE_IS_TABLE (1 << 2)
+#define TABLE_BELONGS_TO_REALM GRANULE_BELONGS_TO_REALM | GRANULE_IS_TABLE
+#define TABLE_BELONGS_TO_NS GRANULE_BELONGS_TO_NS | GRANULE_IS_TABLE
+
+
+// --------------------------------------
+#define ARM_LPAE_MAX_LEVELS		4
+#define ARM_LPAE_PTE_NSTABLE		((1ULL) << 63)
+#define ARM_LPAE_PTE_SW_SYNC		((1ULL) << 55)
+
+
+#define ARM_LPAE_PTE_TYPE_BLOCK		1
+#define ARM_LPAE_PTE_TYPE_TABLE		3
+#define ARM_LPAE_PTE_TYPE_PAGE		3
+#define ARM_LPAE_PTE_ADDR_MASK		0xFFFFFFFFF000
+
+#define ARM_LPAE_BLOCK_SIZE(l,d) (1ULL << (((ARM_LPAE_MAX_LEVELS - (l)) * (d)) + 3))
+
+
+struct init_pte {
+	uint32_t bits_per_level;
+	uint64_t paddr;
+	uint64_t prot;
+	uint32_t lvl;
+	uint32_t num_entries;
+	uint64_t ptep;
+};
+
+// 1 try mapping smc calls.
+#define RMM_MOVE_PAGE_TO_REALM	SMC64_RMMD_EL3_FID(U(5))
+
+#define RMM_TRANSITION_STREAM_TABLE		SMC64_RMMD_EL3_FID(U(12))
+#define RMM_REQUEST_DEVICE_OWNERSHIP		SMC64_RMMD_EL3_FID(U(11))
+
+// 2 try mapping smc calls.
+#define RMM_MAP_PAGES		SMC64_RMMD_EL3_FID(U(13))
+#define RMM_DELEGATE_S2_TBL_MEMORY		SMC64_RMMD_EL3_FID(U(14))
+
+#define RMM_DELEGATE_RING_BUFFER		SMC64_RMMD_EL3_FID(U(15))
+
+#define RMM_CMDQUEUE_SUBMIT		SMC64_RMMD_EL3_FID(U(17))
+
+#define RMM_TRANSITION_CONTROL_PAGE		SMC64_RMMD_EL3_FID(U(18))
+
+#define RMM_UNMAP_PAGES		SMC64_RMMD_EL3_FID(U(19))
+
+
+// Just for testing.
+#define RMM_MEMSET		SMC64_RMMD_EL3_FID(U(16))
+
+
+
+bool check_for_pending_rmi(uint64_t phys_addr, uint64_t ptep);
+void rmi_call_lock();
+void rmi_call_unlock();
+
+struct rmi_init_pte{
+	uint64_t phys_addr;
+	uint64_t iova;
+	uint64_t sid;
+	uint8_t valid;
+};
 
 /* ECC Curve types for attest key generation */
 #define ATTEST_KEY_CURVE_ECC_SECP384R1		0

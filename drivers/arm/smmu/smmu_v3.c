@@ -10,7 +10,6 @@
 #include <drivers/delay_timer.h>
 #include <lib/mmio.h>
 #include <arch_features.h>
-
 /* SMMU poll number of retries */
 #define SMMU_POLL_TIMEOUT_US	U(1000)
 
@@ -79,7 +78,7 @@ int __init smmuv3_init(uintptr_t smmu_base)
 	/* Abort all incoming transactions */
 	if (smmuv3_security_init(smmu_base) != 0)
 		return -1;
-
+	WARN("THIS IS A TEST WARNING.\n");
 #if ENABLE_RME
 
 	if (get_armv9_2_feat_rme_support() != 0U) {
@@ -88,7 +87,8 @@ int __init smmuv3_init(uintptr_t smmu_base)
 			WARN("Skip SMMU GPC configuration.\n");
 		} else {
 			uint64_t gpccr_el3 = read_gpccr_el3();
-			uint64_t gptbr_el3 = read_gptbr_el3();
+			//Pertie : read the actlr that is set on gpt enable 
+			uint64_t gptbr_el3 = read_actlr_el3();
 
 			/* SMMU_ROOT_GPT_BASE_CFG[16] is RES0. */
 			gpccr_el3 &= ~(1UL << 16);
@@ -105,6 +105,7 @@ int __init smmuv3_init(uintptr_t smmu_base)
 			 * whereas it maps to SMMU_ROOT_GPT_BASE[51:12]
 			 * hence needs a 12 bit left shit.
 			 */
+			INFO("Initalizing SMMU GPT at addr: %lx\n", gptbr_el3 << 12);
 			mmio_write_64(smmu_base + SMMU_ROOT_GPT_BASE,
 				      gptbr_el3 << 12);
 

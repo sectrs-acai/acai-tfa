@@ -391,6 +391,7 @@ void __init arm_bl31_plat_arch_setup(void)
 		MAP_BL31_TOTAL,
 #if ENABLE_RME
 		ARM_MAP_L0_GPT_REGION,
+		ARM_MAP_L0_GPT2_REGION, //Pertie
 #endif
 #if RECLAIM_INIT_CODE
 		MAP_BL_INIT_CODE,
@@ -408,7 +409,16 @@ void __init arm_bl31_plat_arch_setup(void)
 #endif
 		{0}
 	};
+	
+/* 	const mmap_region_t *tmp = plat_arm_get_mmap();
 
+	
+	while(tmp->size != 0){
+		WARN("mapping pa: %llx, va: %lx, size: %lx\n",tmp->base_pa,tmp->base_va,tmp->size);
+		tmp++;
+	} */
+
+	WARN("----------------setup_page_tables----------------------\n"); 
 	setup_page_tables(bl_regions, plat_arm_get_mmap());
 
 	enable_mmu_el3(0);

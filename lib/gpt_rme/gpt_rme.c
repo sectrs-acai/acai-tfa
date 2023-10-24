@@ -18,11 +18,12 @@
 #include <lib/smccc.h>
 #include <lib/spinlock.h>
 #include <lib/xlat_tables/xlat_tables_v2.h>
+#include <services/rmmd_svc.h>
+#include <services/pci_svc.h>
 
 #if !ENABLE_RME
 #error "ENABLE_RME must be enabled to use the GPT library."
 #endif
-
 /*
  * Lookup T from PPS
  *
@@ -61,6 +62,7 @@ static const gpt_p_val_e gpt_p_lookup[] = {PGS_4KB_P, PGS_64KB_P, PGS_16KB_P};
  */
 typedef struct {
 	uintptr_t plat_gpt_l0_base;
+	uintptr_t plat_gpt2_l0_base;
 	gpccr_pps_e pps;
 	gpt_t_val_e t;
 	gpccr_pgs_e pgs;
@@ -72,6 +74,7 @@ static gpt_config_t gpt_config;
 /* These variables are used during initialization of the L1 tables. */
 static unsigned int gpt_next_l1_tbl_idx;
 static uintptr_t gpt_l1_tbl;
+static uintptr_t gpt2_l1_tbl;
 
 /*
  * This function checks to see if a GPI value is valid.
@@ -317,7 +320,10 @@ static int gpt_validate_l0_params(gpccr_pps_e pps, uintptr_t l0_mem_base,
 				  size_t l0_mem_size)
 {
 	size_t l0_alignment;
-
+	INFO("about to validate gpt l0 params\n \
+		 	pps: %d\n \
+		 	0_mem_base: %lx\n \
+		  	l0_mem_size: %lx\n", pps, l0_mem_base,l0_mem_size);
 	/*
 	 * Make sure PPS is valid and then store it since macros need this value
 	 * to work.
@@ -416,7 +422,8 @@ static void gpt_generate_l0_blk_desc(pas_region_t *pas)
 	uint64_t gpt_desc;
 	unsigned int end_idx;
 	unsigned int idx;
-	uint64_t *l0_gpt_arr;
+	uint64_t *l0_gpt_arr;	uint64_t *l0_gpt2_arr;
+
 
 	assert(gpt_config.plat_gpt_l0_base != 0U);
 	assert(pas != NULL);
@@ -426,7 +433,8 @@ static void gpt_generate_l0_blk_desc(pas_region_t *pas)
 	 * gpt_validate_pas_mappings so no need to check the same things again.
 	 */
 
-	l0_gpt_arr = (uint64_t *)gpt_config.plat_gpt_l0_base;
+	l0_gpt_arr = (uint64_t *)gpt_config.plat_gpt_l0_base;     l0_gpt2_arr = (uint64_t *)gpt_config.plat_gpt2_l0_base;
+
 
 	/* Create the GPT Block descriptor for this PAS region */
 	gpt_desc = GPT_L0_BLK_DESC(GPT_PAS_ATTR_GPI(pas->attrs));
@@ -443,7 +451,7 @@ static void gpt_generate_l0_blk_desc(pas_region_t *pas)
 
 	/* Generate the needed block descriptors. */
 	for (; idx < end_idx; idx++) {
-		l0_gpt_arr[idx] = gpt_desc;
+		l0_gpt_arr[idx] = gpt_desc; l0_gpt2_arr[idx] = gpt_desc;
 		VERBOSE("[GPT] L0 entry (BLOCK) index %u [%p]: GPI = 0x%" PRIx64 " (0x%" PRIx64 ")\n",
 			idx, &l0_gpt_arr[idx],
 			(gpt_desc >> GPT_L0_BLK_DESC_GPI_SHIFT) &
@@ -491,7 +499,7 @@ static uintptr_t gpt_get_l1_end_pa(uintptr_t cur_pa, uintptr_t end_pa)
  *   first		Address of first granule in range.
  *   last		Address of last granule in range (inclusive).
  */
-static void gpt_fill_l1_tbl(uint64_t gpi, uint64_t *l1, uintptr_t first,
+static void gpt_fill_l1_tbl(uint64_t gpi, uint64_t *l1, uint64_t *l1_2, uintptr_t first,
 			    uintptr_t last)
 {
 	uint64_t gpi_field = GPT_BUILD_L1_DESC(gpi);
@@ -501,7 +509,7 @@ static void gpt_fill_l1_tbl(uint64_t gpi, uint64_t *l1, uintptr_t first,
 	assert((first & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) == 0U);
 	assert((last & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) == 0U);
 	assert(GPT_L0_IDX(first) == GPT_L0_IDX(last));
-	assert(l1 != NULL);
+	assert(l1 != NULL); assert(l1_2 != NULL);
 
 	/* Shift the mask if we're starting in the middle of an L1 entry. */
 	gpi_mask = gpi_mask << (GPT_L1_GPI_IDX(gpt_config.p, first) << 2);
@@ -519,6 +527,10 @@ static void gpt_fill_l1_tbl(uint64_t gpi, uint64_t *l1, uintptr_t first,
 		assert((l1[i] & gpi_mask) ==
 		       (GPT_BUILD_L1_DESC(GPT_GPI_ANY) & gpi_mask));
 		l1[i] = (l1[i] & ~gpi_mask) | (gpi_mask & gpi_field);
+
+		assert((l1_2[i] & gpi_mask) ==
+		       (GPT_BUILD_L1_DESC(GPT_GPI_ANY) & gpi_mask));
+		l1_2[i] = (l1_2[i] & ~gpi_mask) | (gpi_mask & gpi_field);
 
 		/* Reset mask. */
 		gpi_mask = 0xFFFFFFFFFFFFFFFF;
@@ -543,6 +555,7 @@ static uint64_t *gpt_get_new_l1_tbl(void)
 		       (GPT_L1_TABLE_SIZE(gpt_config.p) *
 		       gpt_next_l1_tbl_idx));
 
+
 	/* Increment L1 counter. */
 	gpt_next_l1_tbl_idx++;
 
@@ -552,6 +565,27 @@ static uint64_t *gpt_get_new_l1_tbl(void)
 	}
 
 	return l1;
+}
+// Pertie
+static uint64_t *gpt2_get_new_l1_tbl(void)
+{
+	INFO("gpt2 l1 table base %lx idx %u", gpt2_l1_tbl, gpt_next_l1_tbl_idx);
+	/* Retrieve the next L1 table. */
+	uint64_t *l1_2 = (uint64_t *)((uint64_t)(gpt2_l1_tbl) +
+		       (GPT_L1_TABLE_SIZE(gpt_config.p) *
+		       (gpt_next_l1_tbl_idx-1)));
+
+	// /* Increment L1 counter. */
+	// gpt_next_l1_tbl_idx++;
+
+	/* Initialize all GPIs to GPT_GPI_ANY */
+	for (unsigned int i = 0U; i < GPT_L1_ENTRY_COUNT(gpt_config.p); i++) {
+		 l1_2[i] = GPT_BUILD_L1_DESC(GPT_GPI_ANY);
+		// INFO("here");
+
+	}
+
+	return l1_2;
 }
 
 /*
@@ -567,8 +601,8 @@ static void gpt_generate_l0_tbl_desc(pas_region_t *pas)
 	uintptr_t end_pa;
 	uintptr_t cur_pa;
 	uintptr_t last_gran_pa;
-	uint64_t *l0_gpt_base;
-	uint64_t *l1_gpt_arr;
+	uint64_t *l0_gpt_base; uint64_t *l0_gpt2_base; //Pertie
+	uint64_t *l1_gpt_arr; uint64_t *l1_gpt2_arr; //Pertie
 	unsigned int l0_idx;
 
 	assert(gpt_config.plat_gpt_l0_base != 0U);
@@ -580,7 +614,7 @@ static void gpt_generate_l0_tbl_desc(pas_region_t *pas)
 	 */
 
 	end_pa = pas->base_pa + pas->size;
-	l0_gpt_base = (uint64_t *)gpt_config.plat_gpt_l0_base;
+	l0_gpt_base = (uint64_t *)gpt_config.plat_gpt_l0_base; 	l0_gpt2_base = (uint64_t *)gpt_config.plat_gpt2_l0_base; //Pertie
 
 	/* We start working from the granule at base PA */
 	cur_pa = pas->base_pa;
@@ -596,19 +630,19 @@ static void gpt_generate_l0_tbl_desc(pas_region_t *pas)
 		 */
 		if (GPT_L0_TYPE(l0_gpt_base[l0_idx]) == GPT_L0_TYPE_TBL_DESC) {
 			/* Get the L1 array from the L0 entry. */
-			l1_gpt_arr = GPT_L0_TBLD_ADDR(l0_gpt_base[l0_idx]);
+			l1_gpt_arr = GPT_L0_TBLD_ADDR(l0_gpt_base[l0_idx]); l1_gpt2_arr = GPT_L0_TBLD_ADDR(l0_gpt2_base[l0_idx]); //Pertie
 		} else {
 			/* Get a new L1 table from the L1 memory space. */
-			l1_gpt_arr = gpt_get_new_l1_tbl();
+			l1_gpt_arr = gpt_get_new_l1_tbl(); l1_gpt2_arr = gpt2_get_new_l1_tbl(); //Pertie
 
 			/* Fill out the L0 descriptor and flush it. */
-			l0_gpt_base[l0_idx] = GPT_L0_TBL_DESC(l1_gpt_arr);
+			l0_gpt_base[l0_idx] = GPT_L0_TBL_DESC(l1_gpt_arr); l0_gpt2_base[l0_idx] = GPT_L0_TBL_DESC(l1_gpt2_arr); //Pertie
 		}
 
 		VERBOSE("[GPT] L0 entry (TABLE) index %u [%p] ==> L1 Addr 0x%llx (0x%" PRIx64 ")\n",
 			l0_idx, &l0_gpt_base[l0_idx],
 			(unsigned long long)(l1_gpt_arr),
-			l0_gpt_base[l0_idx]);
+			l0_gpt_base[l0_idx]); //TODO(Supraja): print for Pertie if needed. 
 
 		/*
 		 * Determine the PA of the last granule in this L0 descriptor.
@@ -621,7 +655,7 @@ static void gpt_generate_l0_tbl_desc(pas_region_t *pas)
 		 * function needs the addresses of the first granule and last
 		 * granule in the range.
 		 */
-		gpt_fill_l1_tbl(GPT_PAS_ATTR_GPI(pas->attrs), l1_gpt_arr,
+		gpt_fill_l1_tbl(GPT_PAS_ATTR_GPI(pas->attrs), l1_gpt_arr, l1_gpt2_arr,
 				cur_pa, last_gran_pa);
 
 		/* Advance cur_pa to first granule in next L0 region. */
@@ -645,7 +679,8 @@ static void flush_l0_for_pas_array(pas_region_t *pas, unsigned int pas_count)
 	unsigned int idx;
 	unsigned int start_idx;
 	unsigned int end_idx;
-	uint64_t *l0 = (uint64_t *)gpt_config.plat_gpt_l0_base;
+	uint64_t *l0 = (uint64_t *)gpt_config.plat_gpt_l0_base; uint64_t *l0_2 = (uint64_t *)gpt_config.plat_gpt2_l0_base; //Pertie
+
 
 	assert(pas != NULL);
 	assert(pas_count > 0);
@@ -670,6 +705,8 @@ static void flush_l0_for_pas_array(pas_region_t *pas, unsigned int pas_count)
 	 */
 	flush_dcache_range((uintptr_t)&l0[start_idx],
 			   ((end_idx + 1) - start_idx) * sizeof(uint64_t));
+	flush_dcache_range((uintptr_t)&l0_2[start_idx],
+			   ((end_idx + 1) - start_idx) * sizeof(uint64_t)); //Pertie
 }
 
 /*
@@ -681,22 +718,25 @@ static void flush_l0_for_pas_array(pas_region_t *pas, unsigned int pas_count)
  *   Negative Linux error code in the event of a failure, 0 for success.
  */
 int gpt_enable(void)
-{
+{	
 	u_register_t gpccr_el3;
-
+	//NOTICE("gpt_enable %lx || %lx \n",RMM_MAP_PAGE,RMM_MOVE_PAGE_TO_ROOT);
 	/*
 	 * Granule tables must be initialised before enabling
 	 * granule protection.
 	 */
-	if (gpt_config.plat_gpt_l0_base == 0U) {
+	if (gpt_config.plat_gpt_l0_base == 0U || gpt_config.plat_gpt2_l0_base == 0U) {
 		ERROR("[GPT] Tables have not been initialized!\n");
 		return -EPERM;
 	}
-
 	/* Write the base address of the L0 tables into GPTBR */
-	write_gptbr_el3(((gpt_config.plat_gpt_l0_base >> GPTBR_BADDR_VAL_SHIFT)
+	write_gptbr_el3(((gpt_config.plat_gpt_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
 			>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
-
+	
+	//Pertie: For warm boot
+	write_actlr_el3(((gpt_config.plat_gpt2_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
+			>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
+	
 	/* GPCCR_EL3.PPS */
 	gpccr_el3 = SET_GPCCR_PPS(gpt_config.pps);
 
@@ -742,7 +782,7 @@ int gpt_enable(void)
 void gpt_disable(void)
 {
 	u_register_t gpccr_el3 = read_gpccr_el3();
-
+	NOTICE("gpt_disable\n");
 	write_gpccr_el3(gpccr_el3 & ~GPCCR_GPC_BIT);
 	dsbsy();
 	isb();
@@ -763,7 +803,8 @@ void gpt_disable(void)
  *   Negative Linux error code in the event of a failure, 0 for success.
  */
 int gpt_init_l0_tables(unsigned int pps, uintptr_t l0_mem_base,
-		       size_t l0_mem_size)
+		       size_t l0_mem_size, uintptr_t l0_mem2_base,
+		       size_t l0_mem2_size)
 {
 	int ret;
 	uint64_t gpt_desc;
@@ -776,6 +817,7 @@ int gpt_init_l0_tables(unsigned int pps, uintptr_t l0_mem_base,
 	if (ret != 0) {
 		return ret;
 	}
+	INFO("gpt_validate_l0_params successful\n");
 
 	/* Create the descriptor to initialize L0 entries with. */
 	gpt_desc = GPT_L0_BLK_DESC(GPT_GPI_ANY);
@@ -784,14 +826,27 @@ int gpt_init_l0_tables(unsigned int pps, uintptr_t l0_mem_base,
 	for (unsigned int i = 0U; i < GPT_L0_REGION_COUNT(gpt_config.t); i++) {
 		((uint64_t *)l0_mem_base)[i] = gpt_desc;
 	}
+	for (unsigned int i = 0U; i < GPT_L0_REGION_COUNT(gpt_config.t); i++) {
+		((uint64_t *)l0_mem2_base)[i] = gpt_desc;
+	}
 
 	/* Flush updated L0 tables to memory. */
 	flush_dcache_range((uintptr_t)l0_mem_base,
 			   (size_t)GPT_L0_TABLE_SIZE(gpt_config.t));
 
-	/* Stash the L0 base address once initial setup is complete. */
-	gpt_config.plat_gpt_l0_base = l0_mem_base;
+	/* Flush updated L0 tables to memory. */
+	flush_dcache_range((uintptr_t)l0_mem2_base,
+			   (size_t)GPT_L0_TABLE_SIZE(gpt_config.t));
 
+	/* Stash the L0 base address once initial setup is complete. */
+		gpt_config.plat_gpt_l0_base = l0_mem_base;
+		gpt_config.plat_gpt2_l0_base = l0_mem2_base;
+		write_actlr_el3(((gpt_config.plat_gpt2_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
+			>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
+		// ERROR("actlr_el3 write : %llx\n\n", ((gpt_config.plat_gpt2_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
+		// 	>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
+		// ERROR("actlr_el3 read : %lx\n\n",  (unsigned long)read_actlr_el3());
+		// smmu_gpt_l0_base = l0_mem2_base;
 	return 0;
 }
 
@@ -817,7 +872,8 @@ int gpt_init_l0_tables(unsigned int pps, uintptr_t l0_mem_base,
  *   Negative Linux error code in the event of a failure, 0 for success.
  */
 int gpt_init_pas_l1_tables(gpccr_pgs_e pgs, uintptr_t l1_mem_base,
-			   size_t l1_mem_size, pas_region_t *pas_regions,
+			   size_t l1_mem_size, uintptr_t l1_mem2_base,
+			   size_t l1_mem2_size, pas_region_t *pas_regions,
 			   unsigned int pas_count)
 {
 	int ret;
@@ -835,7 +891,7 @@ int gpt_init_pas_l1_tables(gpccr_pgs_e pgs, uintptr_t l1_mem_base,
 	gpt_config.p = gpt_p_lookup[pgs];
 
 	/* Make sure L0 tables have been initialized. */
-	if (gpt_config.plat_gpt_l0_base == 0U) {
+	if (gpt_config.plat_gpt_l0_base == 0U || gpt_config.plat_gpt2_l0_base == 0U) { //Pertie
 		ERROR("[GPT] L0 tables must be initialized first!\n");
 		return -EPERM;
 	}
@@ -858,6 +914,8 @@ int gpt_init_pas_l1_tables(gpccr_pgs_e pgs, uintptr_t l1_mem_base,
 
 		/* Set up parameters for L1 table generation. */
 		gpt_l1_tbl = l1_mem_base;
+		gpt2_l1_tbl = l1_mem2_base;
+
 		gpt_next_l1_tbl_idx = 0U;
 	}
 
@@ -867,6 +925,7 @@ int gpt_init_pas_l1_tables(gpccr_pgs_e pgs, uintptr_t l1_mem_base,
 	INFO("  L0GPTSZ/S: 0x%x/%u\n", GPT_L0GPTSZ, GPT_S_VAL);
 	INFO("  PAS count: 0x%x\n", pas_count);
 	INFO("  L0 base:   0x%lx\n", gpt_config.plat_gpt_l0_base);
+	INFO("  L0 base2:   0x%lx\n", gpt_config.plat_gpt2_l0_base);
 
 	/* Generate the tables in memory. */
 	for (unsigned int idx = 0U; idx < pas_count; idx++) {
@@ -936,6 +995,10 @@ int gpt_runtime_init(void)
 	gpt_config.plat_gpt_l0_base = ((reg >> GPTBR_BADDR_SHIFT) &
 				      GPTBR_BADDR_MASK) <<
 				      GPTBR_BADDR_VAL_SHIFT;
+	reg = read_actlr_el3();
+	gpt_config.plat_gpt2_l0_base = ((reg >> GPTBR_BADDR_SHIFT) &
+				      GPTBR_BADDR_MASK) <<
+				      GPTBR_BADDR_VAL_SHIFT;
 
 	/* Read GPCCR to get PGS and PPS values. */
 	reg = read_gpccr_el3();
@@ -944,11 +1007,12 @@ int gpt_runtime_init(void)
 	gpt_config.pgs = (reg >> GPCCR_PGS_SHIFT) & GPCCR_PGS_MASK;
 	gpt_config.p = gpt_p_lookup[gpt_config.pgs];
 
-	VERBOSE("[GPT] Runtime Configuration\n");
-	VERBOSE("  PPS/T:     0x%x/%u\n", gpt_config.pps, gpt_config.t);
-	VERBOSE("  PGS/P:     0x%x/%u\n", gpt_config.pgs, gpt_config.p);
-	VERBOSE("  L0GPTSZ/S: 0x%x/%u\n", GPT_L0GPTSZ, GPT_S_VAL);
-	VERBOSE("  L0 base:   0x%lx\n", gpt_config.plat_gpt_l0_base);
+	INFO("[GPT] Runtime Configuration\n");
+	INFO("  PPS/T:     0x%x/%u\n", gpt_config.pps, gpt_config.t);
+	INFO("  PGS/P:     0x%x/%u\n", gpt_config.pgs, gpt_config.p);
+	INFO("  L0GPTSZ/S: 0x%x/%u\n", GPT_L0GPTSZ, GPT_S_VAL);
+	INFO("  L0 base:   0x%lx\n", gpt_config.plat_gpt_l0_base);
+	INFO("  L0 base 2:   0x%lx\n", gpt_config.plat_gpt2_l0_base);
 
 	return 0;
 }
@@ -1001,6 +1065,33 @@ static int get_gpi_params(uint64_t base, gpi_info_t *gpi_info)
 }
 
 /*
+ * Helper to retrieve the gpt_l1_* information from the base address
+ * returned in gpi_info for the second gpt
+ */
+static int get_gpi2_params(uint64_t base, gpi_info_t *gpi_info)
+{
+	uint64_t gpt_l0_desc, *gpt_l0_base;
+
+	gpt_l0_base = (uint64_t *)gpt_config.plat_gpt2_l0_base;
+	gpt_l0_desc = gpt_l0_base[GPT_L0_IDX(base)];
+	if (GPT_L0_TYPE(gpt_l0_desc) != GPT_L0_TYPE_TBL_DESC) {
+		VERBOSE("[GPT] Granule is not covered by a table descriptor!\n");
+		VERBOSE("      Base=0x%" PRIx64 "\n", base);
+		return -EINVAL;
+	}
+
+	/* Get the table index and GPI shift from PA. */
+	gpi_info->gpt_l1_addr = GPT_L0_TBLD_ADDR(gpt_l0_desc);
+	gpi_info->idx = GPT_L1_IDX(gpt_config.p, base);
+	gpi_info->gpi_shift = GPT_L1_GPI_IDX(gpt_config.p, base) << 2;
+
+	gpi_info->gpt_l1_desc = (gpi_info->gpt_l1_addr)[gpi_info->idx];
+	gpi_info->gpi = (gpi_info->gpt_l1_desc >> gpi_info->gpi_shift) &
+		GPT_L1_GRAN_DESC_GPI_MASK;
+	return 0;
+}
+
+/*
  * This function is the granule transition delegate service. When a granule
  * transition request occurs it is routed to this function to have the request,
  * if valid, fulfilled following A1.1.1 Delegate of RME supplement
@@ -1019,13 +1110,14 @@ static int get_gpi_params(uint64_t base, gpi_info_t *gpi_info)
  */
 int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 {
-	gpi_info_t gpi_info;
+	gpi_info_t gpi_info, gpi2_info;
 	uint64_t nse;
-	int res;
+	int res, res2;
 	unsigned int target_pas;
 
 	/* Ensure that the tables have been set up before taking requests. */
 	assert(gpt_config.plat_gpt_l0_base != 0UL);
+	assert(gpt_config.plat_gpt2_l0_base != 0UL);
 
 	/* Ensure that caches are enabled. */
 	assert((read_sctlr_el3() & SCTLR_C_BIT) != 0UL);
@@ -1051,7 +1143,7 @@ int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	if (((base & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
 	    ((size & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
 	    (size == 0UL) ||
-	    ((base + size) >= GPT_PPS_ACTUAL_SIZE(gpt_config.t))) {
+	    ((base + size) >= GPT_PPS_ACTUAL_SIZE(gpt_config.t))) { 
 		VERBOSE("[GPT] Invalid granule transition address range!\n");
 		VERBOSE("      Base=0x%" PRIx64 "\n", base);
 		VERBOSE("      Size=0x%lx\n", size);
@@ -1070,16 +1162,18 @@ int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	 */
 	spin_lock(&gpt_lock);
 	res = get_gpi_params(base, &gpi_info);
-	if (res != 0) {
+	res2 = get_gpi2_params(base, &gpi2_info);
+
+	if (res != 0 || res2 != 0) {
 		spin_unlock(&gpt_lock);
 		return res;
 	}
 
 	/* Check that the current address is in NS state */
-	if (gpi_info.gpi != GPT_GPI_NS) {
+	if (gpi_info.gpi != GPT_GPI_NS || gpi2_info.gpi != GPT_GPI_NS ) {
 		VERBOSE("[GPT] Only Granule in NS state can be delegated.\n");
-		VERBOSE("      Caller: %u, Current GPI: %u\n", src_sec_state,
-			gpi_info.gpi);
+		VERBOSE("      Caller: %u, Current GPI: %u,  Current GPI2: %u\n", src_sec_state,
+			gpi_info.gpi, gpi2_info.gpi);
 		spin_unlock(&gpt_lock);
 		return -EPERM;
 	}
@@ -1089,6 +1183,107 @@ int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	} else {
 		nse = (uint64_t)GPT_NSE_REALM << GPT_NSE_SHIFT;
 	}
+
+	/*
+	 * In order to maintain mutual distrust between Realm and Secure
+	 * states, remove any data speculatively fetched into the target
+	 * physical address space. Issue DC CIPAPA over address range
+	 */
+	flush_dcache_to_popa_range(nse | base,
+				   GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+
+	write_gpt(&gpi_info.gpt_l1_desc, gpi_info.gpt_l1_addr,
+		  gpi_info.gpi_shift, gpi_info.idx, target_pas);
+	//Pertie
+	write_gpt(&gpi2_info.gpt_l1_desc, gpi2_info.gpt_l1_addr,
+		  gpi2_info.gpi_shift, gpi2_info.idx, target_pas);
+
+	dsboshst();
+
+	gpt_tlbi_by_pa_ll(base, GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+	dsbosh();
+
+	nse = (uint64_t)GPT_NSE_NS << GPT_NSE_SHIFT;
+
+	flush_dcache_to_popa_range(nse | base,
+				   GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+
+	/* Unlock access to the L1 tables. */
+	spin_unlock(&gpt_lock);
+
+	/*
+	 * The isb() will be done as part of context
+	 * synchronization when returning to lower EL
+	 */
+	VERBOSE("[GPT] Granule 0x%" PRIx64 ", GPI 0x%x->0x%x\n",
+		base, gpi_info.gpi, target_pas);
+
+	return 0;
+}
+
+
+// Custom SMC
+int gpt_delegate_to_root_pas(uint64_t base, size_t size)
+{
+	gpi_info_t gpi_info;
+	uint64_t nse;
+	int res;
+	unsigned int target_pas;
+	WARN("gpt_delegate_to_root_pas called x1: %lx x2: %lx\n",base,size);
+
+	/* Ensure that the tables have been set up before taking requests. */
+	assert(gpt_config.plat_gpt_l0_base != 0UL);
+
+	/* Ensure that caches are enabled. */
+	assert((read_sctlr_el3() & SCTLR_C_BIT) != 0UL);
+
+	/* See if this is a single or a range of granule transition. */
+	if (size != GPT_PGS_ACTUAL_SIZE(gpt_config.p)) {
+		return -EINVAL;
+	}
+
+	/* Check that base and size are valid */
+	if ((ULONG_MAX - base) < size) {
+		VERBOSE("[GPT] Transition request address overflow!\n");
+		VERBOSE("      Base=0x%" PRIx64 "\n", base);
+		VERBOSE("      Size=0x%lx\n", size);
+		return -EINVAL;
+	}
+
+	/* Make sure base and size are valid. */
+	if (((base & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
+	    ((size & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
+	    (size == 0UL) ||
+	    ((base + size) >= GPT_PPS_ACTUAL_SIZE(gpt_config.t))) {
+		VERBOSE("[GPT] Invalid granule transition address range!\n");
+		VERBOSE("      Base=0x%" PRIx64 "\n", base);
+		VERBOSE("      Size=0x%lx\n", size);
+		return -EINVAL;
+	}
+
+	target_pas = GPT_GPI_ROOT;
+
+	/*
+	 * Access to L1 tables is controlled by a global lock to ensure
+	 * that no more than one CPU is allowed to make changes at any
+	 * given time.
+	 */
+	spin_lock(&gpt_lock);
+	res = get_gpi_params(base, &gpi_info);
+	if (res != 0) {
+		spin_unlock(&gpt_lock);
+		return res;
+	}
+
+	/* Check that the current address is in NS state */
+	if (gpi_info.gpi != GPT_GPI_NS) {
+		VERBOSE("[GPT] Only Granule in NS state can be delegated.\n");
+		VERBOSE("Current GPI: %u\n", gpi_info.gpi);
+		spin_unlock(&gpt_lock);
+		return -EPERM;
+	}
+
+	nse = (uint64_t)GPT_NSE_REALM << GPT_NSE_SHIFT;
 
 	/*
 	 * In order to maintain mutual distrust between Realm and Secure
@@ -1117,12 +1312,210 @@ int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	 * The isb() will be done as part of context
 	 * synchronization when returning to lower EL
 	 */
-	VERBOSE("[GPT] Granule 0x%" PRIx64 ", GPI 0x%x->0x%x\n",
+	INFO("[GPT] Granule 0x%" PRIx64 ", GPI 0x%x->0x%x\n",
 		base, gpi_info.gpi, target_pas);
+	WARN("gpt_delegate_to_root_pas FINISHED");
+	
+	return 0;
+}
+
+uint32_t read_config_space(unsigned long dev_address){
+	uint32_t val = 0;
+
+	//check that the device is  attested and setup correctly 
+	pci_read_config(dev_address, 0, SMC_PCI_SZ_32BIT, &val);
+	// 0000:00:02.0 0000000000000000 00000000 00010 000
+	/*
+		Bits [31:16] : PCI segment group number 
+		Bits [15:8] : PCI bus number
+		Bits [7:3] : PCI device number
+		Bits [2:0] : PCI function number
+	*/
+	return val;
+}
+
+void read_bar_sizes(char* data, unsigned long *res){
+	int start = 20;
+	for(int i = 0; i < 6; i++){
+		unsigned long size = 0;
+		for(int j = 0; j < 4; j++){
+			size = (size << 8) + data[start + j + (i * 4)];
+		}
+		res[i] = size;
+		VERBOSE("bar i %d size %lx ", i, size);
+	}
+}
+
+void read_ipa_pa(char* data, unsigned long *bar_ipa, unsigned long *bar_pa){
+	int start = 48;
+	for(int i = 0; i < 6; i++){
+		unsigned long ipa = 0;
+		unsigned long pa = 0;
+
+		for(int j = 0; j < 8; j++){
+			ipa = (ipa << 8) + data[start + j + (i * 16)];
+			pa = (pa << 8) + data[start + (j+8) + (i * 16)];
+		}
+
+		bar_ipa[i] = ipa;
+		bar_pa[i] = pa;
+		VERBOSE("bar i %d ipa %lx pa %lx ", i, ipa, pa);
+	}
+}
+
+int gpt_attach_dev(uint64_t dev_granule_addr ){
+	unsigned long bar_ipa[] = {0,0,0,0,0,0};
+	unsigned long bar_pa[] = {0,0,0,0,0,0};
+	unsigned long bar_sizes[] = {0,0,0,0,0,0};
+
+	INFO("In attach device in tfa dev_granule addr %lx ", dev_granule_addr);
+
+	read_bar_sizes((char *)dev_granule_addr, bar_sizes);
+	//read dev granule and transition bar regions and the granule to NSP. 
+	read_ipa_pa((char *)dev_granule_addr, bar_ipa, bar_pa);
+
+	//transition the bar_pa and dev_granule_addr to dev mem
+	for(int i = 0; i < 6; i++){
+		for(int j = 0; j < bar_sizes[i]/PAGE_SIZE; j++){
+			gpt_delegate_dev_pas(bar_pa[i] + (j * PAGE_SIZE), PAGE_SIZE, SMC_FROM_REALM, 1);
+		}
+	}	
+	gpt_delegate_dev_pas(dev_granule_addr, PAGE_SIZE, SMC_FROM_REALM, 1);
+
+	uint32_t *data = (uint32_t *)dev_granule_addr;
+	
+	data[12] = read_config_space(0x10);
 
 	return 0;
 }
 
+/*
+	base: base address to transition to dev pas
+	size: size of memory to transition 
+	sec_sec_state
+	delegate_flag: 1 => transition from Realm to NSP 0 => transition from NSP to Realm  
+*/
+int gpt_delegate_dev_pas(uint64_t base, size_t size, unsigned int src_sec_state, unsigned long delegate_flag){
+	//TODO(Supraja) : too much code copied from the delegate function. Can be optimized. 
+	gpi_info_t gpi_info, gpi2_info;
+	uint64_t nse;
+	int res, res2;
+	unsigned int target_pas, target_pas2;
+
+	/* Ensure that the tables have been set up before taking requests. */
+	assert(gpt_config.plat_gpt_l0_base != 0UL);
+	assert(gpt_config.plat_gpt2_l0_base != 0UL);
+
+	/* Ensure that caches are enabled. */
+	assert((read_sctlr_el3() & SCTLR_C_BIT) != 0UL);
+
+	/* Delegate dev pas request can only come from REALM */
+	assert(src_sec_state == SMC_FROM_REALM);
+
+	/* See if this is a single or a range of granule transition. */
+	if (size != GPT_PGS_ACTUAL_SIZE(gpt_config.p)) {
+		return -EINVAL;
+	}
+
+	/* Check that base and size are valid */
+	if ((ULONG_MAX - base) < size) {
+		VERBOSE("[GPT] Transition request address overflow!\n");
+		VERBOSE("      Base=0x%" PRIx64 "\n", base);
+		VERBOSE("      Size=0x%lx\n", size);
+		return -EINVAL;
+	}
+
+	/* Make sure base and size are valid. */
+	if (((base & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
+	    ((size & (GPT_PGS_ACTUAL_SIZE(gpt_config.p) - 1)) != 0UL) ||
+	    (size == 0UL) ||
+	    ((base + size) >= GPT_PPS_ACTUAL_SIZE(gpt_config.t))) {
+		VERBOSE("[GPT] Invalid granule transition address range!\n");
+		VERBOSE("      Base=0x%" PRIx64 "\n", base);
+		VERBOSE("      Size=0x%lx\n", size);
+		return -EINVAL;
+	}
+
+	target_pas = GPT_GPI_REALM;
+	target_pas2 = GPT_GPI_NS;
+
+	/*
+	 * Access to L1 tables is controlled by a global lock to ensure
+	 * that no more than one CPU is allowed to make changes at any
+	 * given time.
+	 */
+	spin_lock(&gpt_lock);
+	res = get_gpi_params(base, &gpi_info);
+	res2 = get_gpi2_params(base, &gpi2_info);
+
+	if (res != 0 || res2 != 0) {
+		spin_unlock(&gpt_lock);
+		return res;
+	}
+	if(delegate_flag == 1){
+		/* Check that the current address is in  Realm state in both the GPT tables */
+		// if (gpi_info.gpi != GPT_GPI_REALM || gpi2_info.gpi != GPT_GPI_REALM ) {
+		//	if(base == 0x5000b000){
+		//		//don't care
+		//	}else{
+		// 	VERBOSE("[GPT] Only Granule in Realm state can be delegated to NSP.\n");
+		// 	VERBOSE("      Caller: %u, Current GPI: %u,  Current GPI2: %u\n", src_sec_state,
+		// 		gpi_info.gpi, gpi2_info.gpi);
+		// 	spin_unlock(&gpt_lock);
+		// 	return -EPERM;
+		//	}
+		// }
+	}else{
+		if (gpi_info.gpi != GPT_GPI_REALM || gpi2_info.gpi != GPT_GPI_NS ) {
+			VERBOSE("[GPT] Only Granule in Dev pas can be undelegated to Realm.\n");
+			VERBOSE("      Caller: %u, Current GPI: %u,  Current GPI2: %u\n", src_sec_state,
+				gpi_info.gpi, gpi2_info.gpi);
+			spin_unlock(&gpt_lock);
+			return -EPERM;
+		}
+		target_pas2 = GPT_GPI_REALM;
+	}
+
+	
+	nse = (uint64_t)GPT_NSE_REALM << GPT_NSE_SHIFT;
+
+
+	/*
+	 * In order to maintain mutual distrust between Realm and Secure
+	 * states, remove any data speculatively fetched into the target
+	 * physical address space. Issue DC CIPAPA over address range
+	 */
+	flush_dcache_to_popa_range(nse | base,
+				   GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+
+	write_gpt(&gpi_info.gpt_l1_desc, gpi_info.gpt_l1_addr,
+		  gpi_info.gpi_shift, gpi_info.idx, target_pas);
+	//Pertie
+	write_gpt(&gpi2_info.gpt_l1_desc, gpi2_info.gpt_l1_addr,
+		  gpi2_info.gpi_shift, gpi2_info.idx, target_pas2);
+
+	dsboshst();
+
+	gpt_tlbi_by_pa_ll(base, GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+
+	dsbosh();
+
+	nse = (uint64_t)GPT_NSE_NS << GPT_NSE_SHIFT;
+
+	flush_dcache_to_popa_range(nse | base,
+				   GPT_PGS_ACTUAL_SIZE(gpt_config.p));
+
+	/* Unlock access to the L1 tables. */
+	spin_unlock(&gpt_lock);
+	/*
+	 * The isb() will be done as part of context
+	 * synchronization when returning to lower EL
+	 */
+	VERBOSE("[GPT] Granule 0x%" PRIx64 ", GPI 0x%x->0x%x  GPI2 0x%x->0x%x delegate flag %lu \n ",
+		base, gpi_info.gpi, target_pas, gpi2_info.gpi, target_pas2, delegate_flag);
+
+	return 0;
+}
 /*
  * This function is the granule transition undelegate service. When a granule
  * transition request occurs it is routed to this function where the request is
@@ -1142,12 +1535,13 @@ int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
  */
 int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 {
-	gpi_info_t gpi_info;
+	gpi_info_t gpi_info, gpi2_info;
 	uint64_t nse;
-	int res;
+	int res, res2;
 
 	/* Ensure that the tables have been set up before taking requests. */
 	assert(gpt_config.plat_gpt_l0_base != 0UL);
+	assert(gpt_config.plat_gpt2_l0_base != 0UL);
 
 	/* Ensure that MMU and caches are enabled. */
 	assert((read_sctlr_el3() & SCTLR_C_BIT) != 0UL);
@@ -1188,16 +1582,19 @@ int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	spin_lock(&gpt_lock);
 
 	res = get_gpi_params(base, &gpi_info);
-	if (res != 0) {
+	res2 = get_gpi2_params(base, &gpi2_info);
+
+	if (res != 0 || res2 != 0) {
 		spin_unlock(&gpt_lock);
 		return res;
 	}
-
 	/* Check that the current address is in the delegated state */
 	if ((src_sec_state == SMC_FROM_REALM  &&
 	     gpi_info.gpi != GPT_GPI_REALM) ||
 	    (src_sec_state == SMC_FROM_SECURE &&
-	     gpi_info.gpi != GPT_GPI_SECURE)) {
+	     gpi_info.gpi != GPT_GPI_SECURE) ||
+		 (src_sec_state == SMC_FROM_SECURE &&
+	     gpi2_info.gpi != GPT_GPI_SECURE)) { //TODO(Supraja): will need to change this for the NSP region undelegate
 		VERBOSE("[GPT] Only Granule in REALM or SECURE state can be undelegated.\n");
 		VERBOSE("      Caller: %u, Current GPI: %u\n", src_sec_state,
 			gpi_info.gpi);
@@ -1213,6 +1610,8 @@ int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	 */
 	write_gpt(&gpi_info.gpt_l1_desc, gpi_info.gpt_l1_addr,
 		  gpi_info.gpi_shift, gpi_info.idx, GPT_GPI_NO_ACCESS);
+	write_gpt(&gpi2_info.gpt_l1_desc, gpi2_info.gpt_l1_addr,
+		  gpi2_info.gpi_shift, gpi2_info.idx, GPT_GPI_NO_ACCESS);
 	dsboshst();
 
 	gpt_tlbi_by_pa_ll(base, GPT_PGS_ACTUAL_SIZE(gpt_config.p));
@@ -1240,6 +1639,8 @@ int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	/* Clear existing GPI encoding and transition granule. */
 	write_gpt(&gpi_info.gpt_l1_desc, gpi_info.gpt_l1_addr,
 		  gpi_info.gpi_shift, gpi_info.idx, GPT_GPI_NS);
+	write_gpt(&gpi2_info.gpt_l1_desc, gpi2_info.gpt_l1_addr,
+		  gpi2_info.gpi_shift, gpi2_info.idx, GPT_GPI_NS);
 	dsboshst();
 
 	/* Ensure that all agents observe the new NS configuration */
@@ -1255,6 +1656,17 @@ int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state)
 	 */
 	VERBOSE("[GPT] Granule 0x%" PRIx64 ", GPI 0x%x->0x%x\n",
 		base, gpi_info.gpi, GPT_GPI_NS);
-
 	return 0;
+}
+
+//Pertie : only changes the gpt base register. Does not need to flush tlb or caches 
+void gpt_change(unsigned int src_sec_state, unsigned int dst_sec_state){
+	if(src_sec_state == NON_SECURE && dst_sec_state == REALM){
+		write_gptbr_el3(((gpt_config.plat_gpt2_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
+			>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
+	} else 	if(src_sec_state == REALM && dst_sec_state == NON_SECURE){
+		write_gptbr_el3(((gpt_config.plat_gpt_l0_base >> GPTBR_BADDR_VAL_SHIFT) 
+			>> GPTBR_BADDR_SHIFT) & GPTBR_BADDR_MASK);
+	}
+
 }

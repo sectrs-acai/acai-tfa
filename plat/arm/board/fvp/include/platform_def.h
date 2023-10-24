@@ -134,7 +134,8 @@
 #  define PLAT_ARM_MMAP_ENTRIES		13
 #  define MAX_XLAT_TABLES		11
 # else
-#  define PLAT_ARM_MMAP_ENTRIES		9
+#  define PLAT_ARM_MMAP_ENTRIES		12 /* must be increased by 1, since we add the additional\
+										  GPT and Map the DRAM2 (aka Linux Memory). Increasing by one more for pcie config region           */
 #  if USE_DEBUGFS
 #   if ENABLE_RME
 #    define MAX_XLAT_TABLES		9
@@ -143,7 +144,7 @@
 #   endif
 #  else
 #   if ENABLE_RME
-#    define MAX_XLAT_TABLES		8
+#    define MAX_XLAT_TABLES		15
 #   elif DRTM_SUPPORT
 #    define MAX_XLAT_TABLES		8
 #   else
@@ -206,14 +207,14 @@
 /* Size of Trusted SRAM - the first 4KB of shared memory - GPT L0 Tables */
 #define PLAT_ARM_MAX_BL31_SIZE		(PLAT_ARM_TRUSTED_SRAM_SIZE - \
 					 ARM_SHARED_RAM_SIZE - \
-					 ARM_L0_GPT_SIZE)
+					 (ARM_L0_GPT_SIZE + ARM_L0_GPT2_SIZE)) //Pertie
 #else
 /*
  * Since BL31 NOBITS overlays BL2 and BL1-RW, PLAT_ARM_MAX_BL31_SIZE is
  * calculated using the current BL31 PROGBITS debug size plus the sizes of
  * BL2 and BL1-RW
  */
-#define PLAT_ARM_MAX_BL31_SIZE		(UL(0x3D000) - ARM_L0_GPT_SIZE)
+#define PLAT_ARM_MAX_BL31_SIZE		(UL(0x3D000) - (ARM_L0_GPT_SIZE+ARM_L0_GPT2_SIZE))
 #endif /* RESET_TO_BL31 */
 
 #ifndef __aarch64__

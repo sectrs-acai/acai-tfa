@@ -25,11 +25,11 @@
  * ----------------------------------------------------------------------------
  * 1GB      | 1GB         |L0 GPT|ANY   |IO                      |Fixed mapping
  * ----------------------------------------------------------------------------
- * 2GB      | 1GB         |L1 GPT|NS    |DRAM (NS Kernel)        |Use T.Descrip
+ * 2GB      | 1GB         |L1 GPT|NS    |DRAM (NS Kernel)        |Use T.Descrip  THis is used for LINUX (0x080000000 as base)
  * ----------------------------------------------------------------------------
- * 3GB      |1GB-64MB     |L1 GPT|NS    |DRAM (NS Kernel)        |Use T.Descrip
+ * 3GB      |1GB-128MB    |L1 GPT|NS    |DRAM (NS Kernel)        |Use T.Descrip
  * ----------------------------------------------------------------------------
- * 4GB-64MB |64MB-32MB    |      |      |                        |
+ * 4GB-128MB|128MB-32MB   |      |      |                        |
  *          | -4MB        |L1 GPT|SECURE|DRAM TZC                |Use T.Descrip
  * ----------------------------------------------------------------------------
  * 4GB-32MB |             |      |      |                        |
@@ -55,11 +55,13 @@
 
 /* Device memory 0 to 2GB */
 #define ARM_PAS_1_BASE			(U(0))
-#define ARM_PAS_1_SIZE			((ULL(1)<<31)) /* 2GB */
+#define ARM_PAS_1_SIZE			((ULL(1)<<31)) /* 2GB*/
 
-/* NS memory 2GB to (end - 64MB) */
+/* NS memory 2GB to (end - 128MB) */
 #define ARM_PAS_2_BASE			(ARM_PAS_1_BASE + ARM_PAS_1_SIZE)
-#define ARM_PAS_2_SIZE			(ARM_NS_DRAM1_SIZE)
+//TODO(Supraja): without the 0x08000000 the regions overlap for pas0 and pas1 during boot. Based on how the offsets are calculated this should not happen.Investigate if errors occur in the future. 
+//TODO(Bene): isn't the overlap correct in that case?, since we extend the TZC region to 128MB from 64?
+#define ARM_PAS_2_SIZE			(ARM_NS_DRAM1_SIZE-0x08000000)
 
 /* Shared area between EL3 and RMM */
 #define ARM_PAS_SHARED_BASE		(ARM_EL3_RMM_SHARED_BASE)
@@ -96,6 +98,14 @@
 #define	ARM_PAS_GPTS			GPT_MAP_REGION_GRANULE(ARM_L1_GPT_ADDR_BASE, \
 							       ARM_L1_GPT_SIZE, \
 							       GPT_GPI_ROOT)
+
+#define	ARM_PAS_GPTS2			GPT_MAP_REGION_GRANULE(ARM_L1_GPT2_ADDR_BASE, \
+							       ARM_L1_GPT2_SIZE, \
+							       GPT_GPI_ROOT)
+
+#define	ARM_PAS_DEV			    GPT_MAP_REGION_GRANULE(0x5000b000, \
+							       PAGE_SIZE, \
+							       GPT_GPI_ANY)
 
 /* GPT Configuration options */
 #define PLATFORM_L0GPTSZ		GPCCR_L0GPTSZ_30BITS

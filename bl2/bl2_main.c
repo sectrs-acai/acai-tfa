@@ -133,6 +133,7 @@ void bl2_main(void)
 	 */
 	smc(BL1_SMC_RUN_IMAGE, (unsigned long)next_bl_ep_info, 0, 0, 0, 0, 0, 0);
 #else /* if BL2_AT_EL3 || ENABLE_RME */
+	CCA_TFA_BL2_LOAD_BL31();
 	NOTICE("BL2: Booting " NEXT_IMAGE "\n");
 	print_entry_point_info(next_bl_ep_info);
 	console_flush();

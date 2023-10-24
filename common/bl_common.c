@@ -81,7 +81,8 @@ static int load_image(unsigned int image_id, image_info_t *image_data)
 	assert(image_data->h.version >= VERSION_2);
 
 	image_base = image_data->image_base;
-
+	
+	INFO("Image Base address 0x%lx\n", image_base);
 	/* Obtain a reference to the image by querying the platform layer */
 	io_result = plat_get_image_source(image_id, &dev_handle, &image_spec);
 	if (io_result != 0) {

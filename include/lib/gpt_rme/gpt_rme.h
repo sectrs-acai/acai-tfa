@@ -15,6 +15,7 @@
 /* GPT helper macros and definitions                                          */
 /******************************************************************************/
 
+
 /*
  * Structure for specifying a mapping range and it's properties. This should not
  * be manually initialized, using the MAP_GPT_REGION_x macros is recommended as
@@ -204,9 +205,9 @@ typedef enum {
  * Return
  *   Negative Linux error code in the event of a failure, 0 for success.
  */
-int gpt_init_l0_tables(gpccr_pps_e pps,
-		       uintptr_t l0_mem_base,
-		       size_t l0_mem_size);
+int gpt_init_l0_tables(unsigned int pps, uintptr_t l0_mem_base,
+		       size_t l0_mem_size, uintptr_t l0_mem2_base,
+		       size_t l0_mem2_size); //Pertie
 
 /*
  * Public API that carves out PAS regions from the L0 tables and builds any L1
@@ -224,10 +225,9 @@ int gpt_init_l0_tables(gpccr_pps_e pps,
  * Return
  *   Negative Linux error code in the event of a failure, 0 for success.
  */
-int gpt_init_pas_l1_tables(gpccr_pgs_e pgs,
-			   uintptr_t l1_mem_base,
-			   size_t l1_mem_size,
-			   pas_region_t *pas_regions,
+int gpt_init_pas_l1_tables(gpccr_pgs_e pgs, uintptr_t l1_mem_base,
+			   size_t l1_mem_size, uintptr_t l1_mem2_base,
+			   size_t l1_mem2_size, pas_region_t *pas_regions,
 			   unsigned int pas_count);
 
 /*
@@ -276,5 +276,10 @@ void gpt_disable(void);
  */
 int gpt_delegate_pas(uint64_t base, size_t size, unsigned int src_sec_state);
 int gpt_undelegate_pas(uint64_t base, size_t size, unsigned int src_sec_state);
+int gpt_delegate_to_root_pas(uint64_t base, size_t size);
 
+//Pertie
+void gpt_change(unsigned int src_sec_state, unsigned int dst_sec_state);
+int gpt_delegate_dev_pas(uint64_t base, size_t size, unsigned int src_sec_state, unsigned long delegate_flag);
+int gpt_attach_dev(uint64_t dev_granule_addr );
 #endif /* GPT_RME_H */

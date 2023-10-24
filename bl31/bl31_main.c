@@ -182,6 +182,7 @@ void bl31_main(void)
 	 */
 #if ENABLE_RME
 	if (rmm_init != NULL) {
+		CCA_TFA_BL31_RMM_INIT();
 		INFO("BL31: Initializing RMM\n");
 
 		int32_t rc = (*rmm_init)();
@@ -264,6 +265,8 @@ void __init bl31_prepare_next_image_entry(void)
 	* If we are entering the Non-secure world, use
 	* 'cm_prepare_el3_exit_ns' to exit.
 	*/
+	CCA_BENCHMARK_STOP;
+
 	if (image_type == NON_SECURE) {
 		cm_prepare_el3_exit_ns();
 	} else {

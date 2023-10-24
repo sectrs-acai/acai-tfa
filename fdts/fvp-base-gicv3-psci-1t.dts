@@ -16,3 +16,4 @@
 
 #include "fvp-base-gicv3.dtsi"
 #include "fvp-base-psci-common.dtsi"
+#include "cactus.dts"

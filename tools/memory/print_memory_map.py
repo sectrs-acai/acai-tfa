@@ -50,7 +50,7 @@ if len(sys.argv) >= 2:
     if len(sys.argv) >= 3:
         inverted_print = sys.argv[2] == '0'
 else:
-    build_dir = 'build/fvp/debug'
+    build_dir = '.'
 
 max_len = max(len(word) for word in blx_symbols) + 2
 if (max_len % 2) != 0:
